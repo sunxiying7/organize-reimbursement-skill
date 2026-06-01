@@ -1,6 +1,6 @@
 ---
 name: organize-reimbursement
-description: Organize Chinese reimbursement folders into an Excel reimbursement sheet from bill screenshots, order screenshots, invoice PDFs, and an Excel template. Use when the user asks to整理报销, generate or update a reimbursement Excel, match bill/order/invoice items, rename invoice files by reimbursement reason, mark unmatched order-only items red, or mark invoice-backed items yellow.
+description: Organize Chinese reimbursement folders into an Excel reimbursement sheet from bill screenshots, order screenshots, invoice PDFs, and an optional Excel template. Use when the user asks to整理报销, generate or update a reimbursement Excel, match bill/order/invoice items, rename order screenshots and invoice files by reimbursement reason, mark unmatched order-only items red, mark invoice-backed items yellow, or create a standard reimbursement sheet when no template is available.
 ---
 
 # Organize Reimbursement
@@ -10,7 +10,7 @@ Use this skill to process a reimbursement workspace that usually contains:
 - `账单截图/`: bill summary screenshots, the primary source when non-empty.
 - `订单截图/`: order screenshots used as evidence images and as supplemental items.
 - `发票/`: invoice PDFs to match, rename, and mark in the sheet.
-- `费用报销单模板.xlsx`: Excel template.
+- `费用报销单模板.xlsx`: optional Excel template.
 
 ## Workflow
 
@@ -47,10 +47,9 @@ Use this skill to process a reimbursement workspace that usually contains:
    - Leave unmatched invoices with their original filenames and mention them in the final response.
 
 6. Generate the workbook.
-   - Prefer the current template over old generated files.
-   - Preserve the template header and signature area.
-   - Insert enough rows for all items.
-   - When extending beyond the template's original detail rows, unmerge detail/signature rows if needed to avoid merged-cell write errors.
+   - If `费用报销单模板.xlsx` exists, prefer the current template over old generated files.
+   - If no template exists, create a standard reimbursement workbook with title, date, fee category, reason, screenshot, amount, invoice status, invoice number, remark, and total rows.
+   - When using a template, preserve the template header and signature area, insert enough rows for all items, and unmerge detail/signature rows if needed to avoid merged-cell write errors.
    - Set the total formula to sum the actual amount column over the generated detail rows.
 
 7. Validate.
@@ -96,6 +95,8 @@ Use `scripts/build_reimbursement.py` after extracting item data. It expects a JS
 }
 ```
 
+Omit `template`, set it to `""`, or leave `费用报销单模板.xlsx` absent to create the standard no-template workbook. Set `"template_required": true` only when the task must fail if the template is missing.
+
 Run:
 
 ```powershell
@@ -107,6 +108,7 @@ The script does not OCR screenshots. Codex must first inspect screenshots/PDF pr
 ## Practical Notes
 
 - Current project outputs may become invalid if copied from temporary generated files; always validate by reopening with `openpyxl`.
+- Treat templates as optional. Do not ask the user for a template unless they explicitly need a company-specific layout.
 - Keep order screenshot filenames aligned to the final `reason` text whenever the match is confident.
 - Do not mark an invoice row yellow unless the invoice is confidently matched.
 - Use light yellow fill `FFF2CC` for invoice-backed rows.

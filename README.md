@@ -33,10 +33,12 @@ Then ask Codex to use `$organize-reimbursement` or say something like:
 账单截图/
 订单截图/
 发票/
-费用报销单模板.xlsx
+费用报销单模板.xlsx  # optional
 ```
 
 The skill treats bill screenshots as the primary source when they contain readable items, renames and embeds matching order screenshots by reason, appends order-only items in red, renames matched invoice PDFs by reason, and marks invoice-backed rows yellow.
+
+If `费用报销单模板.xlsx` is present, the skill preserves and extends that template. If no template is present, it creates a standard reimbursement workbook automatically.
 
 ## Privacy
 

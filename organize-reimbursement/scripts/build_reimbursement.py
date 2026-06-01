@@ -3,11 +3,13 @@ import re
 import sys
 from copy import copy
 from pathlib import Path
+from zipfile import BadZipFile
 
 import openpyxl
+from openpyxl import Workbook
 from openpyxl.cell.cell import MergedCell
 from openpyxl.drawing.image import Image as XLImage
-from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import column_index_from_string
 
 
@@ -45,17 +47,17 @@ def clear_row(ws, row):
             cell.value = None
 
 
-def safe_invoice_name(name):
+def safe_file_name(name):
     name = re.sub(r'[<>:"/\\|?*]', "_", name).strip()
-    return name or "invoice"
+    return name or "file"
 
 
-def rename_invoices(base_dir, invoice_dir, renames):
-    invoice_path = base_dir / invoice_dir
+def rename_files(base_dir, folder, renames):
+    folder_path = base_dir / folder
     results = []
     for old_name, new_name in renames.items():
-        old_path = invoice_path / old_name
-        new_path = invoice_path / safe_invoice_name(new_name)
+        old_path = folder_path / old_name
+        new_path = folder_path / safe_file_name(new_name)
         if old_path == new_path:
             continue
         if new_path.exists():
@@ -96,9 +98,7 @@ def rename_order_images(base_dir, items):
             results.append({"from": order_image, "to": "", "status": "missing"})
             continue
 
-        new_name = safe_invoice_name(reason) + old_path.suffix.lower()
-        new_path = old_path.with_name(new_name)
-
+        new_path = old_path.with_name(safe_file_name(reason) + old_path.suffix.lower())
         if old_path.resolve() == new_path.resolve():
             results.append({"from": order_image, "to": str(new_path.relative_to(base_dir)), "status": "already_named"})
             continue
@@ -111,17 +111,83 @@ def rename_order_images(base_dir, items):
     return results
 
 
+def create_standard_workbook(config):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = config.get("sheet", "报销单")
+
+    widths = {
+        "A": 4,
+        "B": 12,
+        "C": 28,
+        "D": 24,
+        "E": 12,
+        "F": 14,
+        "G": 18,
+        "H": 28,
+    }
+    widths.update(config.get("widths", {}))
+    for column, width in widths.items():
+        ws.column_dimensions[column].width = width
+
+    ws.merge_cells("B1:H1")
+    ws["B1"] = "费用报销单"
+    ws["B1"].font = Font(size=18, bold=True)
+    ws["B1"].alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[1].height = 32
+
+    ws["F2"] = "填报日期："
+    ws["G2"] = config.get("date", "")
+    ws["B4"] = "报销人："
+    ws["D4"] = "所属部门："
+    ws["F4"] = "联系电话："
+
+    headers = ["费用类别", "事由", "截图", "金额", "是否增值税发票", "票号", "备注"]
+    header_row = int(config.get("start_row", 9)) - 1
+    for offset, title in enumerate(headers, start=2):
+        cell = ws.cell(header_row, offset)
+        cell.value = title
+        cell.font = Font(bold=True)
+        cell.fill = PatternFill("solid", fgColor="D9EAF7")
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    thin = Side(style="thin", color="999999")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    for row in range(header_row, header_row + max(len(config.get("items", [])), 1) + 2):
+        for col in range(2, 9):
+            ws.cell(row, col).border = border
+
+    return wb, ws
+
+
+def open_template_or_create(config):
+    base_dir = Path(config["_base_dir"])
+    template_name = config.get("template", "费用报销单模板.xlsx")
+    template = base_dir / template_name if template_name else None
+    if template and template.exists():
+        try:
+            wb = openpyxl.load_workbook(template)
+            sheet_name = config.get("sheet", "没发票")
+            ws = wb[sheet_name] if sheet_name in wb.sheetnames else wb.active
+            return wb, ws, True
+        except (BadZipFile, OSError, KeyError) as exc:
+            if config.get("template_required"):
+                raise
+            config["_template_warning"] = f"Template ignored because it could not be opened: {exc}"
+    if config.get("template_required"):
+        raise FileNotFoundError(f"Template not found: {template}")
+    return (*create_standard_workbook(config), False)
+
+
 def build_workbook(config):
     base_dir = Path(config["_base_dir"])
-    template = base_dir / config.get("template", "费用报销单模板.xlsx")
     output = base_dir / config.get("output", "报销单_整理完成.xlsx")
-    sheet_name = config.get("sheet", "没发票")
     items = config["items"]
     columns = config.get("columns", {})
 
     category_col = col_index(columns, "category", "B")
     reason_col = col_index(columns, "reason", "C")
-    screenshot_col = col_index(columns, "screenshot", "D")
+    screenshot_col_letter = columns.get("screenshot", "D")
     amount_col = col_index(columns, "amount", "E")
     invoice_col = col_index(columns, "has_invoice", "F")
     invoice_no_col = col_index(columns, "invoice_no", "G")
@@ -132,30 +198,33 @@ def build_workbook(config):
     original_end_row = int(config.get("original_end_row", 34))
     total_row = int(config.get("total_row", 35))
 
-    wb = openpyxl.load_workbook(template)
-    ws = wb[sheet_name] if sheet_name in wb.sheetnames else wb.active
+    wb, ws, used_template = open_template_or_create(config)
 
-    for merged_range in list(ws.merged_cells.ranges):
-        if merged_range.min_row >= start_row:
-            ws.unmerge_cells(str(merged_range))
+    if used_template:
+        for merged_range in list(ws.merged_cells.ranges):
+            if merged_range.min_row >= start_row:
+                ws.unmerge_cells(str(merged_range))
 
-    available_rows = original_end_row - start_row + 1
-    extra_rows = max(0, len(items) - available_rows)
-    if extra_rows:
-        ws.insert_rows(total_row, extra_rows)
-        for row in range(total_row, total_row + extra_rows):
-            copy_style(ws, original_end_row, row)
+        available_rows = original_end_row - start_row + 1
+        extra_rows = max(0, len(items) - available_rows)
+        if extra_rows:
+            ws.insert_rows(total_row, extra_rows)
+            for row in range(total_row, total_row + extra_rows):
+                copy_style(ws, original_end_row, row)
+
+        new_total_row = total_row + extra_rows
+        for row in range(start_row, new_total_row):
+            copy_style(ws, start_row, row)
+            clear_row(ws, row)
+    else:
+        new_total_row = start_row + len(items)
 
     end_row = start_row + len(items) - 1
-    new_total_row = total_row + extra_rows
 
-    widths = config.get("widths", {})
-    for column, width in widths.items():
+    for column, width in config.get("widths", {}).items():
         ws.column_dimensions[column].width = width
 
     for row in range(start_row, new_total_row):
-        copy_style(ws, start_row, row)
-        clear_row(ws, row)
         ws.row_dimensions[row].height = config.get("image_row_height", 122) if row <= end_row else 17
 
     center = Alignment(horizontal="center", vertical="center", wrap_text=True)
@@ -197,7 +266,7 @@ def build_workbook(config):
                 image = XLImage(str(image_path))
                 image.width = image_width
                 image.height = image_height
-                ws.add_image(image, f"{columns.get('screenshot', 'D')}{row}")
+                ws.add_image(image, f"{screenshot_col_letter}{row}")
 
     clear_row(ws, new_total_row)
     ws.cell(new_total_row, category_col).value = config.get("total_label", "金额合计")
@@ -210,15 +279,16 @@ def build_workbook(config):
     if config.get("date_cell") and config.get("date"):
         ws[config["date_cell"]] = config["date"]
     elif config.get("date"):
-        ws["H2"] = config["date"]
+        ws["G2"] = config["date"]
 
     wb.save(output)
-    return output
+    return output, used_template
 
 
 def verify_workbook(path, config):
     wb = openpyxl.load_workbook(path, data_only=False)
-    ws = wb[config.get("sheet", "没发票")] if config.get("sheet", "没发票") in wb.sheetnames else wb.active
+    sheet_name = config.get("sheet", "没发票")
+    ws = wb[sheet_name] if sheet_name in wb.sheetnames else wb.active
     start_row = int(config.get("start_row", 9))
     category_col = col_index(config.get("columns", {}), "category", "B")
     amount_col = col_index(config.get("columns", {}), "amount", "E")
@@ -251,15 +321,17 @@ def main():
     order_results = []
     if config.get("rename_order_images", True):
         order_results = rename_order_images(base_dir, config.get("items", []))
-    invoice_results = rename_invoices(
+    invoice_results = rename_files(
         base_dir,
         config.get("invoice_dir", "发票"),
         config.get("invoice_renames", {}),
     )
-    output = build_workbook(config)
+    output, used_template = build_workbook(config)
     verification = verify_workbook(output, config)
     print(json.dumps({
         "output": str(output),
+        "used_template": used_template,
+        "template_warning": config.get("_template_warning"),
         "order_image_renames": order_results,
         "invoice_renames": invoice_results,
         "verification": verification,
