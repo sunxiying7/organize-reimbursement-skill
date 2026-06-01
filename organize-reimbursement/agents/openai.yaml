@@ -1,0 +1,7 @@
+interface:
+  display_name: "报销整理"
+  short_description: "按账单订单截图和发票生成报销 Excel 表格"
+  default_prompt: "Use $organize-reimbursement to整理当前文件夹中的账单截图、订单截图、发票和费用报销单模板。"
+
+policy:
+  allow_implicit_invocation: true
