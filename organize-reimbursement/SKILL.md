@@ -10,7 +10,7 @@ Use this skill to process a reimbursement workspace that usually contains:
 - `账单截图/`: bill summary screenshots, the primary source when non-empty.
 - `订单截图/`: order screenshots used as evidence images and as supplemental items.
 - `发票/`: invoice PDFs to match, rename, and mark in the sheet.
-- `费用报销单模板.xlsx`: optional Excel template.
+- `费用报销单模板.xlsx`: optional project-specific Excel template. If absent, use the bundled template in `assets/费用报销单模板.xlsx`.
 
 ## Workflow
 
@@ -47,8 +47,8 @@ Use this skill to process a reimbursement workspace that usually contains:
    - Leave unmatched invoices with their original filenames and mention them in the final response.
 
 6. Generate the workbook.
-   - If `费用报销单模板.xlsx` exists, prefer the current template over old generated files.
-   - If no template exists, create a standard reimbursement workbook with title, date, fee category, reason, screenshot, amount, invoice status, invoice number, remark, and total rows.
+   - Template lookup order: current project `费用报销单模板.xlsx`, then bundled `assets/费用报销单模板.xlsx`, then standard no-template workbook.
+   - If no template exists or the available template cannot be opened, create a standard reimbursement workbook with title, date, fee category, reason, screenshot, amount, invoice status, invoice number, remark, and total rows.
    - When using a template, preserve the template header and signature area, insert enough rows for all items, and unmerge detail/signature rows if needed to avoid merged-cell write errors.
    - Set the total formula to sum the actual amount column over the generated detail rows.
 
@@ -95,7 +95,7 @@ Use `scripts/build_reimbursement.py` after extracting item data. It expects a JS
 }
 ```
 
-Omit `template`, set it to `""`, or leave `费用报销单模板.xlsx` absent to create the standard no-template workbook. Set `"template_required": true` only when the task must fail if the template is missing.
+Omit `template`, set it to `""`, or leave project `费用报销单模板.xlsx` absent to use the bundled `assets/费用报销单模板.xlsx`. If no usable template exists, the script creates the standard no-template workbook. Set `"template_required": true` only when the task must fail if no template can be opened.
 
 Run:
 
@@ -108,7 +108,7 @@ The script does not OCR screenshots. Codex must first inspect screenshots/PDF pr
 ## Practical Notes
 
 - Current project outputs may become invalid if copied from temporary generated files; always validate by reopening with `openpyxl`.
-- Treat templates as optional. Do not ask the user for a template unless they explicitly need a company-specific layout.
+- Treat project templates as optional because the skill can use its bundled template. Ask the user for a template only when they explicitly need a different company-specific layout.
 - Keep order screenshot filenames aligned to the final `reason` text whenever the match is confident.
 - Do not mark an invoice row yellow unless the invoice is confidently matched.
 - Use light yellow fill `FFF2CC` for invoice-backed rows.

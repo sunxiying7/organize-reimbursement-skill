@@ -163,19 +163,28 @@ def create_standard_workbook(config):
 def open_template_or_create(config):
     base_dir = Path(config["_base_dir"])
     template_name = config.get("template", "费用报销单模板.xlsx")
-    template = base_dir / template_name if template_name else None
+    skill_dir = Path(__file__).resolve().parents[1]
+    template_candidates = []
+    if template_name:
+        configured = Path(template_name)
+        template_candidates.append(configured if configured.is_absolute() else base_dir / configured)
+    template_candidates.append(skill_dir / "assets" / "费用报销单模板.xlsx")
+
+    template = next((candidate for candidate in template_candidates if candidate.exists()), None)
     if template and template.exists():
         try:
             wb = openpyxl.load_workbook(template)
             sheet_name = config.get("sheet", "没发票")
             ws = wb[sheet_name] if sheet_name in wb.sheetnames else wb.active
+            config["_template_path"] = str(template)
             return wb, ws, True
         except (BadZipFile, OSError, KeyError) as exc:
             if config.get("template_required"):
                 raise
             config["_template_warning"] = f"Template ignored because it could not be opened: {exc}"
     if config.get("template_required"):
-        raise FileNotFoundError(f"Template not found: {template}")
+        searched = ", ".join(str(candidate) for candidate in template_candidates)
+        raise FileNotFoundError(f"Template not found. Searched: {searched}")
     return (*create_standard_workbook(config), False)
 
 
@@ -331,6 +340,7 @@ def main():
     print(json.dumps({
         "output": str(output),
         "used_template": used_template,
+        "template_path": config.get("_template_path"),
         "template_warning": config.get("_template_warning"),
         "order_image_renames": order_results,
         "invoice_renames": invoice_results,

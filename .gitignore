@@ -7,11 +7,16 @@
 *.heic
 *.zip
 
+!organize-reimbursement/assets/
+!organize-reimbursement/assets/费用报销单模板.xlsx
+
 账单截图/
 订单截图/
 发票/
 报销单*/
 费用报销单模板.xlsx
+
+!organize-reimbursement/assets/费用报销单模板.xlsx
 
 __pycache__/
 .DS_Store
