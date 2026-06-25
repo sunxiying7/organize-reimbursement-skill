@@ -174,7 +174,7 @@ def open_template_or_create(config):
     if template and template.exists():
         try:
             wb = openpyxl.load_workbook(template)
-            sheet_name = config.get("sheet", "没发票")
+            sheet_name = config.get("sheet", "Sheet1")
             ws = wb[sheet_name] if sheet_name in wb.sheetnames else wb.active
             config["_template_path"] = str(template)
             return wb, ws, True
@@ -296,7 +296,7 @@ def build_workbook(config):
 
 def verify_workbook(path, config):
     wb = openpyxl.load_workbook(path, data_only=False)
-    sheet_name = config.get("sheet", "没发票")
+    sheet_name = config.get("sheet", "Sheet1")
     ws = wb[sheet_name] if sheet_name in wb.sheetnames else wb.active
     start_row = int(config.get("start_row", 9))
     category_col = col_index(config.get("columns", {}), "category", "B")

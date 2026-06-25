@@ -65,7 +65,7 @@ Use `scripts/build_reimbursement.py` after extracting item data. It expects a JS
 {
   "template": "费用报销单模板.xlsx",
   "output": "报销单_整理完成.xlsx",
-  "sheet": "没发票",
+  "sheet": "Sheet1",
   "date": "2026-06-01",
   "columns": {
     "category": "B",
